@@ -1424,7 +1424,7 @@ class App(ctk.CTk):
 			elif os.path.isfile(full_path):
 				try:
 					size = os.path.getsize(full_path)
-				except OSError:
+				except OSErr:
 					size = 0
 
 				file_info = {
@@ -1452,7 +1452,7 @@ class App(ctk.CTk):
 
 		path = filedialog.asksaveasfilename(
 			defaultextension=".json",
-			filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+			filetypes=[("JSON Files", "*.json"), ("All Files", "*")]
 		)
 		if not path:
 			return
@@ -1465,6 +1465,285 @@ class App(ctk.CTk):
 		except Exception as e:
 			self.hash_tree_status.configure(text="JSON export failed.", text_color="red")
 			self.log("ERROR", f"Hash tree JSON export failed: {e}")
+
+	# ---------------------------------------------------------
+	# Compare Panel
+	# ---------------------------------------------------------
+	def build_hash_tab_compare(self):
+		frame = ctk.CTkFrame(self.hash_tab_compare)
+		frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+		# ---------- Top controls: two folders ----------
+		top_frame = ctk.CTkFrame(frame)
+		top_frame.pack(fill="x", pady=5)
+
+		ctk.CTkLabel(top_frame, text=LANG[self.lang]["source_folder_compare"]).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+		self.compare_src_folder = ctk.StringVar()
+		ctk.CTkEntry(top_frame, textvariable=self.compare_src_folder, width=350).grid(row=0, column=1, padx=5, sticky="w")
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["browse"], command=self.browse_compare_src).grid(row=0, column=2, padx=5)
+
+		ctk.CTkLabel(top_frame, text=LANG[self.lang]["dest_folder_compare"]).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+		self.compare_dst_folder = ctk.StringVar()
+		ctk.CTkEntry(top_frame, textvariable=self.compare_dst_folder, width=350).grid(row=1, column=1, padx=5, sticky="w")
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["browse"], command=self.browse_compare_dst).grid(row=1, column=2, padx=5)
+
+		# Algorithm selection
+		algo_frame = ctk.CTkFrame(top_frame)
+		algo_frame.grid(row=2, column=0, columnspan=3, sticky="w", padx=5, pady=5)
+
+		ctk.CTkLabel(algo_frame, text=LANG[self.lang]["hash_algorithm"]).grid(row=0, column=0, sticky="w", padx=5)
+		self.compare_algo_var = ctk.StringVar(value="SHA-256")
+		ctk.CTkOptionMenu(
+			algo_frame,
+			values=["MD5", "SHA-1", "SHA-256", "SHA-512"],
+			variable=self.compare_algo_var
+		).grid(row=0, column=1, padx=5)
+
+		# Buttons
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["start_compare"], command=self.start_hash_compare).grid(
+			row=3, column=0, padx=5, pady=10, sticky="w"
+		)
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["export_results"], command=self.export_compare_results).grid(
+			row=3, column=1, padx=5, pady=10, sticky="w"
+		)
+
+		# ---------- Filter ----------
+		filter_frame = ctk.CTkFrame(frame)
+		filter_frame.pack(fill="x", pady=5)
+
+		ctk.CTkLabel(filter_frame, text=LANG[self.lang]["filter"]).pack(side="left", padx=5)
+		self.compare_filter = ctk.StringVar()
+		ctk.CTkEntry(filter_frame, textvariable=self.compare_filter, width=250).pack(side="left", padx=5)
+		ctk.CTkButton(filter_frame, text=LANG[self.lang]["apply"], command=self.apply_compare_filter).pack(side="left", padx=5)
+		ctk.CTkButton(filter_frame, text=LANG[self.lang]["clear"], command=self.clear_compare_filter).pack(side="left", padx=5)
+
+		# ---------- Table ----------
+		table_frame = ctk.CTkFrame(frame)
+		table_frame.pack(fill="both", expand=True, pady=5)
+
+		columns = ["status", "relpath", "src_hash", "dst_hash"]
+		self.compare_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+
+		self.compare_tree.heading("status", text=LANG[self.lang]["status"])
+		self.compare_tree.heading("relpath", text=LANG[self.lang]["relpath"])
+		self.compare_tree.heading("src_hash", text=LANG[self.lang]["src_hash"])
+		self.compare_tree.heading("dst_hash", text=LANG[self.lang]["dst_hash"])
+
+		self.compare_tree.column("status", width=100, anchor="center")
+		self.compare_tree.column("relpath", width=300)
+		self.compare_tree.column("src_hash", width=200)
+		self.compare_tree.column("dst_hash", width=200)
+
+		y_scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.compare_tree.yview)
+		x_scroll = ttk.Scrollbar(table_frame, orient="horizontal", command=self.compare_tree.xview)
+		self.compare_tree.configure(yscroll=y_scroll.set, xscroll=x_scroll.set)
+
+		self.compare_tree.grid(row=0, column=0, sticky="nsew")
+		y_scroll.grid(row=0, column=1, sticky="ns")
+		x_scroll.grid(row=1, column=0, sticky="ew")
+
+		table_frame.grid_rowconfigure(0, weight=1)
+		table_frame.grid_columnconfigure(0, weight=1)
+
+		# Tags for different statuses
+		self.compare_tree.tag_configure("match", background="#2d4a2d")
+		self.compare_tree.tag_configure("mismatch", background="#4a2d2d")
+		self.compare_tree.tag_configure("missing", background="#4a3d2d")
+
+		# ---------- Status ----------
+		self.compare_status = ctk.CTkLabel(frame, text="", font=("Arial", 14))
+		self.compare_status.pack(fill="x", pady=5)
+
+	# ---------------------------------------------------------
+	# Duplicate Panel
+	# ---------------------------------------------------------
+	def build_hash_tab_duplicates(self):
+		frame = ctk.CTkFrame(self.hash_tab_duplicates)
+		frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+		# ---------- Top controls ----------
+		top_frame = ctk.CTkFrame(frame)
+		top_frame.pack(fill="x", pady=5)
+
+		ctk.CTkLabel(top_frame, text=LANG[self.lang]["folder"]).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+		self.dup_folder = ctk.StringVar()
+		ctk.CTkEntry(top_frame, textvariable=self.dup_folder, width=400).grid(
+			row=0, column=1, padx=5, sticky="w"
+		)
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["browse"], command=self.browse_dup_folder).grid(row=0, column=2, padx=5)
+
+		# Algorithms
+		algo_frame = ctk.CTkFrame(top_frame)
+		algo_frame.grid(row=1, column=0, columnspan=3, sticky="w", padx=5, pady=5)
+
+		ctk.CTkLabel(algo_frame, text=LANG[self.lang]["hash_algorithm"]).grid(row=0, column=0, sticky="w", padx=5)
+
+		# for duplicates, we usually use one algo (default SHA-256)
+		self.dup_algo_var = ctk.StringVar(value="SHA-256")
+		ctk.CTkOptionMenu(
+			algo_frame,
+			values=["MD5", "SHA-1", "SHA-256", "SHA-512"],
+			variable=self.dup_algo_var
+		).grid(row=0, column=1, padx=5, pady=5)
+
+		# Buttons
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["find_duplicates"], command=self.start_find_duplicates).grid(
+			row=2, column=0, padx=5, pady=10, sticky="w"
+		)
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["export_txt"], command=self.export_duplicates_txt).grid(
+			row=2, column=1, padx=5, pady=10, sticky="w"
+		)
+		ctk.CTkButton(top_frame, text=LANG[self.lang]["export_json"], command=self.export_duplicates_json).grid(
+			row=2, column=2, padx=5, pady=10, sticky="w"
+		)
+
+		# ---------- Progress Bar and Current File Label ----------
+		progress_frame = ctk.CTkFrame(frame)
+		progress_frame.pack(fill="x", pady=5)
+
+		self.dup_progress = ctk.CTkProgressBar(progress_frame)
+		self.dup_progress.pack(fill="x", padx=5, pady=5)
+		self.dup_progress.set(0)
+
+		self.dup_current_file = ctk.CTkLabel(progress_frame, text="", anchor="w")
+		self.dup_current_file.pack(fill="x", padx=5, pady=2)
+
+		# ---------- Middle controls: actions ----------
+		action_frame = ctk.CTkFrame(frame)
+		action_frame.pack(fill="x", pady=5)
+
+		ctk.CTkLabel(action_frame, text=LANG[self.lang]["actions_on_selected"]).pack(side="left", padx=5)
+		ctk.CTkButton(action_frame, text=LANG[self.lang]["select_all_but_one"], command=self.select_duplicates_but_one).pack(
+			side="left", padx=5
+		)
+		ctk.CTkButton(action_frame, text=LANG[self.lang]["delete_selected"], command=self.delete_selected_duplicates).pack(
+			side="left", padx=5
+		)
+		ctk.CTkButton(action_frame, text=LANG[self.lang]["move_selected"], command=self.move_selected_duplicates).pack(
+			side="left", padx=5
+		)
+
+		# ---------- Table ----------
+		table_frame = ctk.CTkFrame(frame)
+		table_frame.pack(fill="both", expand=True, pady=5)
+
+		columns = ["hash", "size", "path"]
+		self.dup_tree = ttk.Treeview(
+			table_frame,
+			columns=columns,
+			show="headings",
+			selectmode="extended"
+		)
+
+		self.dup_tree.heading("hash", text=LANG[self.lang]["hash"])
+		self.dup_tree.heading("size", text=LANG[self.lang]["size"])
+		self.dup_tree.heading("path", text=LANG[self.lang]["path"])
+
+		self.dup_tree.column("hash", width=260)
+		self.dup_tree.column("size", width=100, anchor="e")
+		self.dup_tree.column("path", width=400)
+
+		y_scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.dup_tree.yview)
+		x_scroll = ttk.Scrollbar(table_frame, orient="horizontal", command=self.dup_tree.xview)
+		self.dup_tree.configure(yscroll=y_scroll.set, xscroll=x_scroll.set)
+
+		self.dup_tree.grid(row=0, column=0, sticky="nsew")
+		y_scroll.grid(row=0, column=1, sticky="ns")
+		x_scroll.grid(row=1, column=0, sticky="ew")
+
+		table_frame.grid_rowconfigure(0, weight=1)
+		table_frame.grid_columnconfigure(0, weight=1)
+
+		# Tag for duplicate groups (optional color)
+		self.dup_tree.tag_configure("dup_group", background="#403030")
+
+		# ---------- Status ----------
+		self.dup_status = ctk.CTkLabel(frame, text="", font=("Arial", 14))
+		self.dup_status.pack(fill="x", pady=5)
+
+	# ---------------------------------------------------------
+	# Settings Panel
+	# ---------------------------------------------------------
+	def build_settings_panel(self):
+		frame = ctk.CTkFrame(self.tab_settings)
+		frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+		# ---------- LANGUAGE ----------
+		ctk.CTkLabel(frame, text=LANG[self.lang]["language"], anchor="w").grid(row=0, column=0, sticky="w", pady=10)
+		self.lang_var = ctk.StringVar(value=self.cfg["language"])
+
+		lang_menu = ctk.CTkOptionMenu(
+			frame,
+			values=["he", "en"],
+			variable=self.lang_var
+		)
+		lang_menu.grid(row=0, column=1, sticky="w", padx=10)
+
+		# ---------- THEME ----------
+		ctk.CTkLabel(frame, text=LANG[self.lang]["theme_mode"], anchor="w").grid(row=1, column=0, sticky="w", pady=10)
+		self.theme_var = ctk.StringVar(value=self.cfg["theme_mode"])
+
+		theme_menu = ctk.CTkOptionMenu(
+			frame,
+			values=["light", "dark", "auto"],
+			variable=self.theme_var
+		)
+		theme_menu.grid(row=1, column=1, sticky="w", padx=10)
+
+		# ---------- SMART MOVE THRESHOLD ----------
+		ctk.CTkLabel(frame, text=LANG[self.lang]["smart_threshold"], anchor="w").grid(row=2, column=0, sticky="w", pady=10)
+		self.settings_threshold = ctk.StringVar(value=str(self.cfg["smart_move_threshold"]))
+
+
+		ctk.CTkEntry(frame, textvariable=self.settings_threshold, width=80).grid(row=2, column=1, sticky="w", padx=10)
+
+		# ---------- LOG RETENTION ----------
+		ctk.CTkLabel(frame, text=LANG[self.lang]["log_retention"], anchor="w").grid(row=3, column=0, sticky="w", pady=10)
+		self.settings_log_retention = ctk.StringVar(value=str(self.cfg["log_retention_days"]))
+
+		ctk.CTkEntry(frame, textvariable=self.settings_log_retention, width=80).grid(row=3, column=1, sticky="w", padx=10)
+
+		# ---------- SAVE BUTTON ----------
+		save_btn = ctk.CTkButton(frame, text=LANG[self.lang]["save_settings"], command=self.apply_settings)
+		save_btn.grid(row=4, column=0, columnspan=2, pady=20)
+
+		frame.grid_columnconfigure(1, weight=1)
+
+	# ---------------------------------------------------------
+	# Logs Panel
+	# ---------------------------------------------------------
+	def build_logs_panel(self):
+		frame = ctk.CTkFrame(self.tab_logs)
+		frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+		# Left side: list of log files
+		left_frame = ctk.CTkFrame(frame)
+		left_frame.pack(side="left", fill="y", padx=10)
+
+		ctk.CTkLabel(left_frame, text=LANG[self.lang]["log_files"]).pack(anchor="w", pady=5)
+
+		self.logs_listbox = tk.Listbox(left_frame, width=30, height=25)
+		self.logs_listbox.pack(fill="y", pady=5)
+		self.logs_listbox.bind("<<ListboxSelect>>", self.load_selected_log)
+
+		# Buttons
+		btn_frame = ctk.CTkFrame(left_frame)
+		btn_frame.pack(pady=10)
+
+		ctk.CTkButton(btn_frame, text=LANG[self.lang]["refresh"], command=self.refresh_logs).pack(pady=5)
+		ctk.CTkButton(btn_frame, text=LANG[self.lang]["delete_selected_log"], command=self.delete_selected_log).pack(pady=5)
+
+		# Right side: log viewer
+		right_frame = ctk.CTkFrame(frame)
+		right_frame.pack(side="right", fill="both", expand=True, padx=10)
+
+		ctk.CTkLabel(right_frame, text=LANG[self.lang]["log_content"]).pack(anchor="w", pady=5)
+
+		self.logs_textbox = ctk.CTkTextbox(right_frame, height=500)
+		self.logs_textbox.pack(fill="both", expand=True, padx=5, pady=5)
+
+		# Load initial list
+		self.refresh_logs()
 
 	def browse_dup_folder(self):
 		path = filedialog.askdirectory()
@@ -1612,6 +1891,7 @@ class App(ctk.CTk):
 				match = True
 			else:
 				line = " ".join([
+
 					r["status"],
 					r["relpath"],
 					r["src_hash"],
@@ -1752,7 +2032,7 @@ class App(ctk.CTk):
 				
 				try:
 					size = os.path.getsize(path)
-				except OSError:
+				except OSErr:
 					size = 0
 
 				try:
@@ -1866,9 +2146,9 @@ class App(ctk.CTk):
 		for iid in items:
 			vals = self.dup_tree.item(iid, "values")
 			if len(vals) >= 3:
-				path = vals[2]
-				if path:
-					paths.append((iid, path))
+				file_path = vals[2]
+				if file_path:
+					paths.append((iid, file_path))
 
 		if not paths:
 			self.dup_status.configure(text="No valid file paths selected.", text_color="orange")

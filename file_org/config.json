@@ -1,6 +1,6 @@
 {
     "language": "en",
     "theme_mode": "auto",
-    "smart_move_threshold": 50,
+    "smart_move_threshold": 500,
     "log_retention_days": 7
 }
