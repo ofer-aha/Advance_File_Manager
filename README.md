@@ -14,6 +14,16 @@ A powerful desktop application for managing file operations with hash verificati
 
 ---
 
+## ⚠️ Disclaimer
+
+> **USE WITH CAUTION**
+>
+> This software is provided **"as is"**, without warranty of any kind, express or implied. The author(s) and contributors shall **not be held liable** for any data loss, corruption, or unintended consequences resulting from the use or misuse of this application. File operations such as **move, delete, and duplicate removal can be irreversible**. Always ensure you have a current backup of your data before proceeding. **You use this software entirely at your own risk.**
+>
+> See [SECURITY.md](SECURITY.md) for responsible disclosure and safe usage guidelines.
+
+---
+
 ## 🌟 Features
 
 ### File Operations
